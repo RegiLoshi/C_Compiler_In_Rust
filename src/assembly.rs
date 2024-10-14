@@ -1,10 +1,12 @@
-use crate::tac::{Program as TacProgram, Function as TacFunction, Instruction as TacInstruction, Val, UnaryOperator as TacUnaryOperator};
+use crate::tac::{Program as TacProgram, Function as TacFunction, Instruction as TacInstruction, Val, UnaryOperator as TacUnaryOperator, BinaryOperator as TacBinaryOperator};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Reg {
     AX,
+    DX,
     R10,
+    R11,
 }
 
 #[derive(Debug, Clone)]
@@ -22,9 +24,19 @@ pub enum UnaryOperator {
 }
 
 #[derive(Debug, Clone)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mul,
+}
+
+#[derive(Debug, Clone)]
 pub enum Instruction {
     Mov(Operand, Operand),
     Unary(UnaryOperator, Operand),
+    Binary(BinaryOperator, Operand, Operand),
+    Idiv(Operand),
+    Cdq, //sign extension
     AllocateStack(i32),
     Ret,
 }
@@ -69,6 +81,40 @@ impl TacInstruction {
                 Instruction::Mov(Operand::from(src.clone()), Operand::from(dst.clone())),
                 Instruction::Unary(UnaryOperator::from(operator.clone()), Operand::from(dst.clone())),
             ],
+            TacInstruction::Binary { operator, src1, src2, dst } => {
+                match operator {
+                    // Handling the division operator
+                    TacBinaryOperator::Divide => vec![
+                        Instruction::Mov(Operand::from(src1.clone()), Operand::Register(Reg::AX)),
+                        Instruction::Cdq,
+                        Instruction::Idiv(Operand::from(src2.clone())),
+                        Instruction::Mov(Operand::Register(Reg::AX), Operand::from(dst.clone())),
+                    ],
+
+                    // Handling the modulo operator
+                    TacBinaryOperator::Modulo => vec![
+                        Instruction::Mov(Operand::from(src1.clone()), Operand::Register(Reg::AX)),
+                        Instruction::Cdq,
+                        Instruction::Idiv(Operand::from(src2.clone())),
+                        Instruction::Mov(Operand::Register(Reg::DX), Operand::from(dst.clone())),
+                    ],
+
+                    // Handling other binary operators
+                    _ => vec![
+                        Instruction::Mov(Operand::from(src1.clone()), Operand::from(dst.clone())),
+                        Instruction::Binary(
+                            match operator {
+                                TacBinaryOperator::Add => BinaryOperator::Add,
+                                TacBinaryOperator::Subtract => BinaryOperator::Sub,
+                                TacBinaryOperator::Multiply => BinaryOperator::Mul,
+                                _ => panic!("Invalid operator"),
+                            },
+                            Operand::from(src2.clone()),
+                            Operand::from(dst.clone()),
+                        ),
+                    ],
+                }
+            }
         }
     }
 }
@@ -100,6 +146,8 @@ impl Operand {
             Operand::Register(reg) => match reg {
                 Reg::AX => "%eax".to_string(),
                 Reg::R10 => "%r10d".to_string(),
+                Reg::R11 => "%r11d".to_string(),
+                Reg::DX => "%edx".to_string(),
             },
             Operand::Pseudo(id) => id.clone(),
             Operand::Stack(offset) => format!("{}(%rbp)", offset),
@@ -123,7 +171,16 @@ impl Function {
                 Instruction::Unary(op, dst) => {
                     let new_dst = Self::replace_operand(dst, &mut pseudo_map, &mut counter);
                     new_instructions.push(Instruction::Unary(op.clone(), new_dst));
-                }
+                },
+                Instruction::Binary(op, src, dst) => {
+                    let new_src = Self::replace_operand(src, &mut pseudo_map, &mut counter);
+                    let new_dst = Self::replace_operand(dst, &mut pseudo_map, &mut counter);
+                    new_instructions.push(Instruction::Binary(op.clone(), new_src, new_dst));
+                },
+                Instruction::Idiv(op) => {
+                    let new_op = Self::replace_operand(op, &mut pseudo_map, &mut counter);
+                    new_instructions.push(Instruction::Idiv(new_op));
+                },
                 _ => new_instructions.push(instr.clone()),
             }
         }
@@ -158,12 +215,46 @@ impl Function {
                         (Operand::Stack(_), Operand::Stack(_)) => {
                             new_instructions.push(Instruction::Mov(src.clone(), Operand::Register(Reg::R10)));
                             new_instructions.push(Instruction::Mov(Operand::Register(Reg::R10), dst.clone()));
-                        }
+                        },
                         _ => {
                             new_instructions.push(instr.clone());
                         }
                     }
-                }
+                },
+                Instruction::Binary(op, src, dst) => {
+                    match (op, src, dst) {
+                        (BinaryOperator::Add, Operand::Stack(_), Operand::Stack(_)) |
+                        (BinaryOperator::Sub, Operand::Stack(_), Operand::Stack(_)) => {
+                            new_instructions.push(Instruction::Mov(src.clone(), Operand::Register(Reg::R10)));
+                            new_instructions.push(Instruction::Binary(op.clone(), Operand::Register(Reg::R10), dst.clone()));
+                        },
+                        (BinaryOperator::Mul, Operand::Imm(_), dst @ Operand::Stack(_)) => {
+                            new_instructions.push(Instruction::Mov(dst.clone(), Operand::Register(Reg::R11)));
+                            new_instructions.push(Instruction::Binary(BinaryOperator::Mul, src.clone(), Operand::Register(Reg::R11)));
+                            new_instructions.push(Instruction::Mov(Operand::Register(Reg::R11), dst.clone()));
+                        },
+                        (BinaryOperator::Mul, src @ Operand::Stack(_), dst @ Operand::Stack(_)) => {
+                            new_instructions.push(Instruction::Mov(src.clone(), Operand::Register(Reg::R10)));
+                            new_instructions.push(Instruction::Mov(dst.clone(), Operand::Register(Reg::R11)));
+                            new_instructions.push(Instruction::Binary(BinaryOperator::Mul, Operand::Register(Reg::R10), Operand::Register(Reg::R11)));
+                            new_instructions.push(Instruction::Mov(Operand::Register(Reg::R11), dst.clone()));
+                        },
+                        _ => {
+                            new_instructions.push(instr.clone());
+                        }
+                    }
+                },
+                Instruction::Idiv(op) => {
+                    match op {
+                        Operand::Imm(_) => {
+                            new_instructions.push(Instruction::Mov(op.clone(), Operand::Register(Reg::R10)));
+                            new_instructions.push(Instruction::Idiv(Operand::Register(Reg::R10)));
+                        },
+                        _ => {
+                            new_instructions.push(instr.clone());
+                        }
+                    }
+                },
                 _ => {
                     new_instructions.push(instr.clone());
                 }
@@ -200,7 +291,26 @@ impl Function {
                     result.push_str("movq %rbp, %rsp\n");
                     result.push_str("popq %rbp\n");
                     result.push_str("ret\n");
-                }
+                },
+                Instruction::Binary(op, src, dst) => {
+                    match op {
+                        BinaryOperator::Add => {
+                            result.push_str(&format!("addl {}, {}\n", src.to_assembly_file(), dst.to_assembly_file()));
+                        }
+                        BinaryOperator::Sub => {
+                            result.push_str(&format!("subl {}, {}\n", src.to_assembly_file(), dst.to_assembly_file()));
+                        }
+                        BinaryOperator::Mul => {
+                            result.push_str(&format!("imull {}, {}\n", src.to_assembly_file(), dst.to_assembly_file()));
+                        }
+                    }
+                },
+                Instruction::Idiv(op) => {
+                    result.push_str(&format!("idivl {}\n", op.to_assembly_file()));
+                },
+                Instruction::Cdq => {
+                    result.push_str("cdq\n");
+                },
             }
         }
     }

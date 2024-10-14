@@ -1,4 +1,4 @@
-use crate::parser::{Program as ParserProgram, Function_declaration, Statement, Exp, UnaryOp};
+use crate::parser::{Program as ParserProgram, Function_declaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
 
 #[derive(Clone, Debug)]
 pub enum UnaryOperator {
@@ -6,11 +6,32 @@ pub enum UnaryOperator {
     Complement,
 }
 
+#[derive(Clone, Debug)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+}
+
 impl From<&UnaryOp> for UnaryOperator {
     fn from(op: &UnaryOp) -> Self {
         match op {
             UnaryOp::Negation => UnaryOperator::Negate,
             UnaryOp::Complement => UnaryOperator::Complement,
+        }
+    }
+}
+
+impl From<&BinaryOp> for BinaryOperator {
+    fn from(op: &BinaryOp) -> Self {
+        match op {
+            BinaryOp::Add => BinaryOperator::Add,
+            BinaryOp::Subtract => BinaryOperator::Subtract,
+            BinaryOp::Multiply => BinaryOperator::Multiply,
+            BinaryOp::Divide => BinaryOperator::Divide,
+            BinaryOp::Modulo => BinaryOperator::Modulo,
         }
     }
 }
@@ -25,6 +46,7 @@ pub enum Val {
 pub enum Instruction {
     Return(Val),
     Unary { operator: UnaryOperator, src: Val, dst: Val },
+    Binary { operator: BinaryOperator, src1: Val, src2: Val, dst: Val },
 }
 
 #[derive(Clone, Debug)]
@@ -38,16 +60,38 @@ pub struct Program {
     pub function: Function,
 }
 
-impl Exp {
+impl Factor {
     fn generate_tac(&self, body: &mut Vec<Instruction>) -> Val {
         match self {
-            Exp::Constant(value) => Val::Constant(*value),
-            Exp::Unary(op, exp) => {
+            Factor::Int(value) => Val::Constant(*value),
+            Factor::Unary(op, exp) => {
                 let val = exp.generate_tac(body);
                 let dst = Val::Identifier(format!("tmp.{}", body.len()));
                 let instruction = Instruction::Unary {
                     operator: UnaryOperator::from(op),
                     src: val,
+                    dst: dst.clone(),
+                };
+                body.push(instruction);
+                dst
+            }
+            Factor::Exp(exp) => exp.generate_tac(body),
+        }
+    }
+}
+
+impl Exp {
+    fn generate_tac(&self, body: &mut Vec<Instruction>) -> Val {
+        match self {
+            Exp::Factor(factor) => factor.generate_tac(body),
+            Exp::Binary(left, op, right) => {
+                let left_val = left.generate_tac(body);
+                let right_val = right.generate_tac(body);
+                let dst = Val::Identifier(format!("tmp.{}", body.len()));
+                let instruction = Instruction::Binary {
+                    operator: BinaryOperator::from(op),
+                    src1: left_val,
+                    src2: right_val,
                     dst: dst.clone(),
                 };
                 body.push(instruction);
@@ -92,7 +136,7 @@ impl ParserProgram {
             }
         }
     }
-    }
+}
 
 pub fn generate_tac(program: ParserProgram) -> Program {
     program.generate_tac()

@@ -1,7 +1,7 @@
 use std::process;
 #[derive(Debug, PartialEq)]
 pub enum TOKEN_TYPE {
-    IDENTIFIER,
+    IDENTIFIER, 
     CONSTANT,
     KEYWORD,
     OPEN_PAREN,
@@ -13,6 +13,8 @@ pub enum TOKEN_TYPE {
     COMMENT,
     LONG_COMMENT,
     STAR,
+    PLUS,
+    MODULUS,
     TILDE_OP,
     NEGATION_OP,
     DECREMENT_OP,
@@ -128,6 +130,8 @@ impl<'a> Lex<'a> {
                     Ok(Some(Token { token_type: TOKEN_TYPE::NEGATION_OP, value: "-".to_string() }))
                 }
             },
+            '%' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::MODULUS, value: "%".to_string() })) },
+            '+' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::PLUS, value: "+".to_string() })) },
             _ => Err(format!("Invalid character '{}' found at position {} in text '{}'", 
                             self.text.chars().nth(self.pos).unwrap(), self.pos, self.text)),
         }
