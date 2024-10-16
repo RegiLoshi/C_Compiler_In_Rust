@@ -1,0 +1,20 @@
+# Binaries for programs and libraries
+/target/
+
+# Build artifacts
+*.rlib
+
+# Cargo.lock file (keep it for applications; optional for libraries)
+/Cargo.lock
+
+# Backup files created by editors
+*~
+
+# macOS specific files
+.DS_Store
+
+# IDEs and editor-specific files (optional based on your environment)
+.idea/
+.vscode/
+*.swp
+
