@@ -48,7 +48,7 @@ fn main() {
     match parser::parse_program(&mut tokens) {
         Ok(program) => {
             println!("Parsing successful");
-//             let tac = tac::generate_tac(program);
+            let tac = tac::generate_tac(program);
 //             let mut assembly = assembly::generate_assembly_ast(tac);
 //             println!("{:?}", assembly);
 //             assembly.apply_fixes();
