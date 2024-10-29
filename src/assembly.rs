@@ -216,7 +216,7 @@ impl Function {
         }
     }
 
-    pub fn fixMov(&mut self, stackSize: i32) {
+    pub fn fix_mov(&mut self, stack_size: i32) {
         let mut new_instructions = Vec::new();
         for instr in self.instructions.iter() {
             match instr {
@@ -279,10 +279,10 @@ impl Function {
             }
         }
         self.instructions = new_instructions;
-        self.instructions.insert(0, Instruction::AllocateStack(stackSize));
+        self.instructions.insert(0, Instruction::AllocateStack(stack_size));
     }
 
-    pub fn to_assembly_file(mut self, result: &mut String) {
+    pub fn to_assembly_file(self, result: &mut String) {
         result.push_str(&format!(".globl _{}\n", self.name));
         result.push_str(&format!("_{}:\n", self.name));
         result.push_str("pushq %rbp\n");
@@ -378,9 +378,9 @@ impl Function {
 }
 
 impl Program {
-    pub fn applyFixes(&mut self) {
+    pub fn apply_fixes(&mut self) {
         let stack_size = self.function.replace_pseudo();
-        self.function.fixMov(stack_size);
+        self.function.fix_mov(stack_size);
     }
 
     pub fn to_assembly_file(&self) -> String {
@@ -390,7 +390,7 @@ impl Program {
     }
 }
 
-pub fn generate_assembly_AST(program: TacProgram) -> Program {
+pub fn generate_assembly_ast(program: TacProgram) -> Program {
     program.to_assembly_program()
 }
 

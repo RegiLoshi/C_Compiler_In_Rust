@@ -40,13 +40,13 @@ pub enum Statement {
 }
 
 #[derive(Debug)]
-pub enum Function_declaration {
+pub enum FunctionDeclaration {
     Function(String, Statement),
 }
 
 #[derive(Debug)]
 pub enum Program {
-    Program(Function_declaration),
+    Program(FunctionDeclaration),
 }
 
 pub enum Associativity{
@@ -100,10 +100,10 @@ impl PrettyPrint for Statement {
     }
 }
 
-impl PrettyPrint for Function_declaration {
+impl PrettyPrint for FunctionDeclaration {
     fn pretty_print(&self, indent: usize) {
         match self {
-            Function_declaration::Function(name, statement) => {
+            FunctionDeclaration::Function(name, statement) => {
                 println!("{}Function: {}", " ".repeat(indent), name);
                 statement.pretty_print(indent + 2);
             }
@@ -187,12 +187,12 @@ fn get_operator_precedence(op: &BinaryOp) -> u8 {
     }
 }
 
-fn get_associativity(op: &BinaryOp) -> Associativity {
-    match op {
-        BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo |
-        BinaryOp::LeftShift | BinaryOp::RightShift | BinaryOp::BitwiseAnd | BinaryOp::BitwiseXor | BinaryOp::BitwiseOr => Associativity::Left,
-    }
-}
+// fn get_associativity(op: &BinaryOp) -> Associativity {
+//     match op {
+//         BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo |
+//         BinaryOp::LeftShift | BinaryOp::RightShift | BinaryOp::BitwiseAnd | BinaryOp::BitwiseXor | BinaryOp::BitwiseOr => Associativity::Left,
+//     }
+// }
 
 fn parse_op(token: &lex::Token) -> Result<BinaryOp, String> {
     match token.token_type {
@@ -244,7 +244,7 @@ fn parse_statement(tokens: &mut Vec<lex::Token>) -> Result<Statement, String> {
     Ok(Statement::Return(exp))
 }
 
-fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<Function_declaration, String> {
+fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDeclaration, String> {
     if tokens.is_empty() {
         return Err("Unexpected end of file while parsing function declaration".to_string());
     }
@@ -278,7 +278,7 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<Function_d
     if !tokens.is_empty() {
         return Err(format!("Unexpected token: {:?}", tokens[0]));
     }
-    Ok(Function_declaration::Function(name_token.value, statement))
+    Ok(FunctionDeclaration::Function(name_token.value, statement))
 }
 
 pub fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {

@@ -1,4 +1,4 @@
-use crate::parser::{Program as ParserProgram, Function_declaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
+use crate::parser::{Program as ParserProgram, FunctionDeclaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
 
 #[derive(Clone, Debug)]
 pub enum UnaryOperator {
@@ -122,11 +122,11 @@ impl Statement {
     }
 }
 
-impl Function_declaration {
+impl FunctionDeclaration {
     pub fn generate_tac(&self) -> Function {
         let mut body = Vec::new();
         match self {
-            Function_declaration::Function(identifier, statement) => {
+            FunctionDeclaration::Function(identifier, statement) => {
                 statement.generate_tac(&mut body);
                 Function {
                     identifier: identifier.clone(),

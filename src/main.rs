@@ -46,9 +46,9 @@ fn main() {
         Ok(program) => {
             println!("Parsing successful");
             let tac = tac::generate_tac(program);
-            let mut assembly = assembly::generate_assembly_AST(tac);
+            let mut assembly = assembly::generate_assembly_ast(tac);
             println!("{:?}", assembly);
-            assembly.applyFixes();
+            assembly.apply_fixes();
             println!("{:?}", assembly);
             let assembly_code = assembly.to_assembly_file();
             println!("{}", assembly_code);
