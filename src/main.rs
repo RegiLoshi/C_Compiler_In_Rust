@@ -45,9 +45,9 @@ fn main() {
     );
 
     // Parse the program
-//     match parser::parse_program(&mut tokens) {
-//         Ok(program) => {
-//             println!("Parsing successful");
+    match parser::parse_program(&mut tokens) {
+        Ok(program) => {
+            println!("Parsing successful");
 //             let tac = tac::generate_tac(program);
 //             let mut assembly = assembly::generate_assembly_ast(tac);
 //             println!("{:?}", assembly);
@@ -97,15 +97,14 @@ fn main() {
 //             } else {
 //                 println!("Program terminated by signal");
 //             }
-//         }
-//         Err(e) => {
-//             // Parsing failed, print error and exit with non-zero code
-//             eprintln!("Text input: {}", input);
-//             eprintln!("Tokens: {:?}", tokens);
-//             eprintln!("Parsing error: {}", e);
-//             process::exit(1);
-//         }
-// }
-
+        }
+        Err(e) => {
+            // Parsing failed, print error and exit with non-zero code
+            eprintln!("Text input: {}", input);
+            eprintln!("Tokens: {:?}", tokens);
+            eprintln!("Parsing error: {}", e);
+            process::exit(1);
+        }
+}
 
 }

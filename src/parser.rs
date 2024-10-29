@@ -2,8 +2,9 @@ use crate::lex;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
-    Negation,
-    Complement,
+    Negation, // -
+    Complement, // ~
+    LogicalNot, // !
 }
 
 
@@ -19,6 +20,16 @@ pub enum BinaryOp {
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
+    LogicalAnd,
+    LogicalOr,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    LessThan,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    //Tag,
+    Assignment,
 }
 
 #[derive(Debug)]
@@ -158,11 +169,15 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
         lex::TokenType::NegationOp => {
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Negation, Box::new(factor)))
-        }
+        },
         lex::TokenType::TildeOp => {
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Complement, Box::new(factor)))
-        }
+        },
+        lex::TokenType::LogicalNot => {
+            let factor = parse_factor(tokens)?;
+            Ok(Factor::Unary(UnaryOp::LogicalNot, Box::new(factor)))
+        },
         lex::TokenType::OpenParen => {
             let exp = parse_expression(tokens, 0)?;
             if tokens.is_empty() {
@@ -170,7 +185,7 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
             }
             expect_token_type(&tokens.remove(0), lex::TokenType::CloseParen)?;
             Ok(Factor::Exp(Box::new(exp)))
-        }
+        },
         _ => Err("Unexpected token while parsing factor".to_string()),
     }
 }
@@ -178,12 +193,17 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
 
 fn get_operator_precedence(op: &BinaryOp) -> u8 {
     match op {
-        BinaryOp::Add | BinaryOp::Subtract => 45,
         BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => 50,
+        BinaryOp::Add | BinaryOp::Subtract => 45,
         BinaryOp::LeftShift | BinaryOp::RightShift => 45,
         BinaryOp::BitwiseAnd => 44,
         BinaryOp::BitwiseXor => 43,
         BinaryOp::BitwiseOr => 42,
+        BinaryOp::GreaterThan | BinaryOp::LessThan | BinaryOp::GreaterThanOrEqual | BinaryOp::LessThanOrEqual => 35,
+        BinaryOp::Equal | BinaryOp::NotEqual => 30,
+        BinaryOp::LogicalAnd => 10,
+        BinaryOp::LogicalOr => 5,
+        BinaryOp::Assignment => 1,
     }
 }
 
@@ -206,6 +226,15 @@ fn parse_op(token: &lex::Token) -> Result<BinaryOp, String> {
         lex::TokenType::CARET => Ok(BinaryOp::BitwiseXor),
         lex::TokenType::LeftShift => Ok(BinaryOp::LeftShift),
         lex::TokenType::RightShift => Ok(BinaryOp::RightShift),
+        lex::TokenType::Equal => Ok(BinaryOp::Equal),
+        lex::TokenType::NotEqual => Ok(BinaryOp::NotEqual),
+        lex::TokenType::GreaterThan => Ok(BinaryOp::GreaterThan),
+        lex::TokenType::LessThan => Ok(BinaryOp::LessThan),
+        lex::TokenType::GreaterThanOrEqual => Ok(BinaryOp::GreaterThanOrEqual),
+        lex::TokenType::LessThanOrEqual => Ok(BinaryOp::LessThanOrEqual),
+        lex::TokenType::LogicalAnd => Ok(BinaryOp::LogicalAnd),
+        lex::TokenType::LogicalOr => Ok(BinaryOp::LogicalOr),
+        lex::TokenType::Assignment => Ok(BinaryOp::Assignment),
         _ => Err(format!("Unexpected token: {:?}", token)),
     }
 }
