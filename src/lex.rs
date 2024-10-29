@@ -25,6 +25,15 @@ pub enum TokenType {
     GreaterThan,
     LeftShift,
     RightShift,
+    LogicalNot,
+    LogicalAnd,
+    LogicalOr,
+    Assignment,
+    Equal,
+    NotEqual,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    Tag,
 }
 
 #[derive(Debug)]
@@ -139,15 +148,35 @@ impl<'a> Lex<'a> {
             },
             '%' => { self.advance(); Ok(Some(Token { token_type: TokenType::MODULUS, value: "%".to_string() })) },
             '+' => { self.advance(); Ok(Some(Token { token_type: TokenType::PLUS, value: "+".to_string() })) },
-            '&' => { self.advance(); Ok(Some(Token { token_type: TokenType::AMPERSAND, value: "&".to_string() })) },
-            '|' => { self.advance(); Ok(Some(Token { token_type: TokenType::PIPE, value: "|".to_string() })) },
+            '&' => {
+                self.advance();
+                if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '&' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::LogicalAnd, value: "&&".to_string() }))
+                } else {
+                    Ok(Some(Token { token_type: TokenType::AMPERSAND, value: "&".to_string() }))
+                }
+            },
+            '|' => { 
+                self.advance();
+                if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '|' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::LogicalOr, value: "||".to_string() }))
+                } else {
+                    Ok(Some(Token { token_type: TokenType::PIPE, value: "|".to_string() }))
+                }
+            },
             '^' => { self.advance(); Ok(Some(Token { token_type: TokenType::CARET, value: "^".to_string() })) },
             '<' => {
                 self.advance();
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '<' {
                     self.advance();
                     Ok(Some(Token { token_type: TokenType::LeftShift, value: "<<".to_string() }))
-                } else {
+                } else if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '=' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::LessThanOrEqual, value: "<=".to_string() }))
+                }
+                else {
                     Ok(Some(Token { token_type: TokenType::LessThan, value: "<".to_string() }))
                 }
             },
@@ -156,9 +185,39 @@ impl<'a> Lex<'a> {
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '>' {
                     self.advance();
                     Ok(Some(Token { token_type: TokenType::RightShift, value: ">>".to_string() }))
-                } else {
+                }else if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '=' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::GreaterThanOrEqual, value: ">=".to_string() }))}
+                 else {
                     Ok(Some(Token { token_type: TokenType::GreaterThan, value: ">".to_string() }))
                 }
+            },
+            '!' => { 
+                self.advance();
+                if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '=' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::NotEqual, value: "!=".to_string() }))
+                } else {
+                    Ok(Some(Token { token_type: TokenType::LogicalNot, value: "!".to_string() }))
+                }
+             },
+            '=' => {
+                self.advance();
+                if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '=' {
+                    self.advance();
+                    Ok(Some(Token { token_type: TokenType::Equal, value: "==".to_string() }))
+                } else {
+                    Ok(Some(Token { token_type: TokenType::Assignment, value: "=".to_string() }))
+                }
+            },
+            '#' => {
+                self.advance();
+                let mut tag = "#".to_string();
+                while self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() != '\n' {
+                    tag.push(self.text.chars().nth(self.pos).unwrap());
+                    self.advance();
+                }
+                Ok(Some(Token { token_type: TokenType::Tag, value: tag }))
             },
             _ => Err(format!("Invalid character '{}' found at position {} in text '{}'", 
                             self.text.chars().nth(self.pos).unwrap(), self.pos, self.text)),
