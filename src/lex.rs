@@ -1,35 +1,35 @@
 use std::process;
 #[derive(Debug, PartialEq)]
-pub enum TOKEN_TYPE {
+pub enum TokenType {
     IDENTIFIER, 
     CONSTANT,
     KEYWORD,
-    OPEN_PAREN,
-    CLOSE_PAREN,
-    OPEN_BRACE,
-    CLOSE_BRACE,
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
     SEMICOLON,
     SLASH,
     COMMENT,
-    LONG_COMMENT,
+    LongComment,
     STAR,
     PLUS,
     MODULUS,
-    TILDE_OP,
-    NEGATION_OP,
-    DECREMENT_OP,
+    TildeOp,
+    NegationOp,
+    DecrementOp,
     AMPERSAND,
     PIPE,
     CARET,
-    LESS_THAN,
-    GREATER_THAN,
-    LEFT_SHIFT,
-    RIGHT_SHIFT,
+    LessThan,
+    GreaterThan,
+    LeftShift,
+    RightShift,
 }
 
 #[derive(Debug)]
 pub struct Token {
-    pub token_type: TOKEN_TYPE,
+    pub token_type: TokenType,
     pub value: String,
 }
 
@@ -65,7 +65,7 @@ impl<'a> Lex<'a> {
             result.push(self.text.chars().nth(self.pos).unwrap());
             self.advance();
         }
-        Token { token_type: TOKEN_TYPE::CONSTANT, value: result }
+        Token { token_type: TokenType::CONSTANT, value: result }
     }
 
     fn identifier(&mut self) -> Token {
@@ -74,7 +74,7 @@ impl<'a> Lex<'a> {
             result.push(self.text.chars().nth(self.pos).unwrap());
             self.advance();
         }
-        Token { token_type: TOKEN_TYPE::IDENTIFIER, value: result }
+        Token { token_type: TokenType::IDENTIFIER, value: result }
     }
 
     fn next(&mut self) -> Result<Option<Token>, String> {
@@ -92,11 +92,11 @@ impl<'a> Lex<'a> {
                 Ok(Some(num_token))
             },
             'a'..='z' | 'A'..='Z' => Ok(Some(self.identifier())),
-            '(' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::OPEN_PAREN, value: "(".to_string() })) },
-            ')' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::CLOSE_PAREN, value: ")".to_string() })) },
-            '{' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::OPEN_BRACE, value: "{".to_string() })) },
-            '}' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::CLOSE_BRACE, value: "}".to_string() })) },
-            ';' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::SEMICOLON, value: ";".to_string() })) },
+            '(' => { self.advance(); Ok(Some(Token { token_type: TokenType::OpenParen, value: "(".to_string() })) },
+            ')' => { self.advance(); Ok(Some(Token { token_type: TokenType::CloseParen, value: ")".to_string() })) },
+            '{' => { self.advance(); Ok(Some(Token { token_type: TokenType::OpenBrace, value: "{".to_string() })) },
+            '}' => { self.advance(); Ok(Some(Token { token_type: TokenType::CloseBrace, value: "}".to_string() })) },
+            ';' => { self.advance(); Ok(Some(Token { token_type: TokenType::SEMICOLON, value: ";".to_string() })) },
             '/' => { 
                 self.advance();
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '/' {
@@ -104,7 +104,7 @@ impl<'a> Lex<'a> {
                     while self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() != '\n' {
                         self.advance();
                     }
-                    Ok(Some(Token { token_type: TOKEN_TYPE::COMMENT, value: "//".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::COMMENT, value: "//".to_string() }))
                 } else if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '*' {
                     self.advance();
                     let mut long_comment = "/*".to_string();
@@ -121,43 +121,43 @@ impl<'a> Lex<'a> {
                             self.advance();
                         }
                     }
-                    Ok(Some(Token { token_type: TOKEN_TYPE::LONG_COMMENT, value: long_comment }))
+                    Ok(Some(Token { token_type: TokenType::LongComment, value: long_comment }))
                 } else {
-                    Ok(Some(Token { token_type: TOKEN_TYPE::SLASH, value: "/".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::SLASH, value: "/".to_string() }))
                 }
             },
-            '*' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::STAR, value: "*".to_string() })) },
-            '~' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::TILDE_OP, value: "~".to_string() })) },
+            '*' => { self.advance(); Ok(Some(Token { token_type: TokenType::STAR, value: "*".to_string() })) },
+            '~' => { self.advance(); Ok(Some(Token { token_type: TokenType::TildeOp, value: "~".to_string() })) },
             '-' => {
                 self.advance();
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '-' {
                     self.advance();
-                    Ok(Some(Token { token_type: TOKEN_TYPE::DECREMENT_OP, value: "--".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::DecrementOp, value: "--".to_string() }))
                 } else {
-                    Ok(Some(Token { token_type: TOKEN_TYPE::NEGATION_OP, value: "-".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::NegationOp, value: "-".to_string() }))
                 }
             },
-            '%' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::MODULUS, value: "%".to_string() })) },
-            '+' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::PLUS, value: "+".to_string() })) },
-            '&' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::AMPERSAND, value: "&".to_string() })) },
-            '|' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::PIPE, value: "|".to_string() })) },
-            '^' => { self.advance(); Ok(Some(Token { token_type: TOKEN_TYPE::CARET, value: "^".to_string() })) },
+            '%' => { self.advance(); Ok(Some(Token { token_type: TokenType::MODULUS, value: "%".to_string() })) },
+            '+' => { self.advance(); Ok(Some(Token { token_type: TokenType::PLUS, value: "+".to_string() })) },
+            '&' => { self.advance(); Ok(Some(Token { token_type: TokenType::AMPERSAND, value: "&".to_string() })) },
+            '|' => { self.advance(); Ok(Some(Token { token_type: TokenType::PIPE, value: "|".to_string() })) },
+            '^' => { self.advance(); Ok(Some(Token { token_type: TokenType::CARET, value: "^".to_string() })) },
             '<' => {
                 self.advance();
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '<' {
                     self.advance();
-                    Ok(Some(Token { token_type: TOKEN_TYPE::LEFT_SHIFT, value: "<<".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::LeftShift, value: "<<".to_string() }))
                 } else {
-                    Ok(Some(Token { token_type: TOKEN_TYPE::LESS_THAN, value: "<".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::LessThan, value: "<".to_string() }))
                 }
             },
             '>' => {
                 self.advance();
                 if self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap() == '>' {
                     self.advance();
-                    Ok(Some(Token { token_type: TOKEN_TYPE::RIGHT_SHIFT, value: ">>".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::RightShift, value: ">>".to_string() }))
                 } else {
-                    Ok(Some(Token { token_type: TOKEN_TYPE::GREATER_THAN, value: ">".to_string() }))
+                    Ok(Some(Token { token_type: TokenType::GreaterThan, value: ">".to_string() }))
                 }
             },
             _ => Err(format!("Invalid character '{}' found at position {} in text '{}'", 
@@ -183,48 +183,3 @@ impl<'a> Lex<'a> {
     
 }
 
-
-// use std::fs;
-// use std::env;
-// use std::process;
-// use std::path::Path;
-
-// fn main() {
-//     let text = "int main(void) {
-//         return 1foo;
-//     }";
-//     let mut lexer = Lex::new(text);
-//     let tokens = lexer.get_tokens();
-//     for token in tokens {
-//         println!("{:?}", token);
-//     }
-// }
-
-
-//     let args: Vec<String> = env::args().collect();
-    
-//     // Print out all arguments for debugging
-//     eprintln!("Received {} arguments:", args.len());
-//     for (i, arg) in args.iter().enumerate() {
-//         eprintln!("Argument {}: {}", i, arg);
-//     }
-
-//     let input_file = &args[2];
-//     eprintln!("Attempting to read file: {}", input_file);
-
-//     // Read the input file
-//     let input = match fs::read_to_string(input_file) {
-//         Ok(content) => content,
-//         Err(err) => {
-//             eprintln!("Failed to read input file: {}", err);
-//             process::exit(1);
-//         }
-//     };
-
-//     // Create a lexer instance and get tokens
-//     let mut lexer = Lex::new(&input);
-//     let tokens = lexer.get_tokens();
-//     for token in tokens {
-//         println!("{:?}", token);
-//     }
-// }

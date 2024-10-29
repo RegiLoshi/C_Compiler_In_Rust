@@ -39,7 +39,7 @@ fn main() {
     let mut tokens = lexer.get_tokens();
 
     //Remove comments from tokens
-    tokens.retain(|token| token.token_type != lex::TOKEN_TYPE::COMMENT && token.token_type != lex::TOKEN_TYPE::LONG_COMMENT);
+    tokens.retain(|token| token.token_type != lex::TokenType::COMMENT && token.token_type != lex::TokenType::LongComment);
 
     // Parse the program
     match parser::parse_program(&mut tokens) {
