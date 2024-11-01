@@ -2,12 +2,13 @@ use crate::lex;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
-    Negation,
-    Complement,
+    Negation, // -
+    Complement, // ~
+    LogicalNot, // !
 }
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -19,6 +20,16 @@ pub enum BinaryOp {
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
+    LogicalAnd,
+    LogicalOr,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    LessThan,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    //Tag,
+    Assignment,
 }
 
 #[derive(Debug)]
@@ -40,13 +51,13 @@ pub enum Statement {
 }
 
 #[derive(Debug)]
-pub enum Function_declaration {
+pub enum FunctionDeclaration {
     Function(String, Statement),
 }
 
 #[derive(Debug)]
 pub enum Program {
-    Program(Function_declaration),
+    Program(FunctionDeclaration),
 }
 
 pub enum Associativity{
@@ -100,10 +111,10 @@ impl PrettyPrint for Statement {
     }
 }
 
-impl PrettyPrint for Function_declaration {
+impl PrettyPrint for FunctionDeclaration {
     fn pretty_print(&self, indent: usize) {
         match self {
-            Function_declaration::Function(name, statement) => {
+            FunctionDeclaration::Function(name, statement) => {
                 println!("{}Function: {}", " ".repeat(indent), name);
                 statement.pretty_print(indent + 2);
             }
@@ -131,17 +142,17 @@ fn expect_int_keyword(token: &lex::Token) -> Result<(), String> {
 
 fn expect_identifier(token: &lex::Token, expected: Option<&str>) -> Result<(), String> {
     match expected {
-        Some(n) if token.token_type != lex::TOKEN_TYPE::IDENTIFIER || token.value != n => {
+        Some(n) if token.token_type != lex::TokenType::IDENTIFIER || token.value != n => {
             Err(format!("Expected identifier '{}', got '{}'", n, token.value))
         }
-        None if token.token_type != lex::TOKEN_TYPE::IDENTIFIER => {
+        None if token.token_type != lex::TokenType::IDENTIFIER => {
             Err(format!("Expected identifier, got '{}'", token.value))
         }
         _ => Ok(()),
     }
 }
 
-fn expect_token_type(token: &lex::Token, token_type: lex::TOKEN_TYPE) -> Result<(), String> {
+fn expect_token_type(token: &lex::Token, token_type: lex::TokenType) -> Result<(), String> {
     if token.token_type != token_type {
         return Err(format!("Expected token type {:?}, got {:?}", token_type, token.token_type));
     }
@@ -154,23 +165,27 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
     }
     let token = tokens.remove(0);
     match token.token_type {
-        lex::TOKEN_TYPE::CONSTANT => Ok(Factor::Int(token.value.parse().unwrap())),
-        lex::TOKEN_TYPE::NEGATION_OP => {
+        lex::TokenType::CONSTANT => Ok(Factor::Int(token.value.parse().unwrap())),
+        lex::TokenType::NegationOp => {
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Negation, Box::new(factor)))
-        }
-        lex::TOKEN_TYPE::TILDE_OP => {
+        },
+        lex::TokenType::TildeOp => {
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Complement, Box::new(factor)))
-        }
-        lex::TOKEN_TYPE::OPEN_PAREN => {
+        },
+        lex::TokenType::LogicalNot => {
+            let factor = parse_factor(tokens)?;
+            Ok(Factor::Unary(UnaryOp::LogicalNot, Box::new(factor)))
+        },
+        lex::TokenType::OpenParen => {
             let exp = parse_expression(tokens, 0)?;
             if tokens.is_empty() {
                 return Err("Unexpected end of file; expected closing parenthesis".to_string());
             }
-            expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::CLOSE_PAREN)?;
+            expect_token_type(&tokens.remove(0), lex::TokenType::CloseParen)?;
             Ok(Factor::Exp(Box::new(exp)))
-        }
+        },
         _ => Err("Unexpected token while parsing factor".to_string()),
     }
 }
@@ -178,34 +193,48 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
 
 fn get_operator_precedence(op: &BinaryOp) -> u8 {
     match op {
-        BinaryOp::Add | BinaryOp::Subtract => 45,
         BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => 50,
+        BinaryOp::Add | BinaryOp::Subtract => 45,
         BinaryOp::LeftShift | BinaryOp::RightShift => 45,
         BinaryOp::BitwiseAnd => 44,
         BinaryOp::BitwiseXor => 43,
         BinaryOp::BitwiseOr => 42,
+        BinaryOp::GreaterThan | BinaryOp::LessThan | BinaryOp::GreaterThanOrEqual | BinaryOp::LessThanOrEqual => 35,
+        BinaryOp::Equal | BinaryOp::NotEqual => 30,
+        BinaryOp::LogicalAnd => 10,
+        BinaryOp::LogicalOr => 5,
+        BinaryOp::Assignment => 1,
     }
 }
 
-fn get_associativity(op: &BinaryOp) -> Associativity {
-    match op {
-        BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo |
-        BinaryOp::LeftShift | BinaryOp::RightShift | BinaryOp::BitwiseAnd | BinaryOp::BitwiseXor | BinaryOp::BitwiseOr => Associativity::Left,
-    }
-}
+// fn get_associativity(op: &BinaryOp) -> Associativity {
+//     match op {
+//         BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo |
+//         BinaryOp::LeftShift | BinaryOp::RightShift | BinaryOp::BitwiseAnd | BinaryOp::BitwiseXor | BinaryOp::BitwiseOr => Associativity::Left,
+//     }
+// }
 
 fn parse_op(token: &lex::Token) -> Result<BinaryOp, String> {
     match token.token_type {
-        lex::TOKEN_TYPE::PLUS => Ok(BinaryOp::Add),
-        lex::TOKEN_TYPE::NEGATION_OP => Ok(BinaryOp::Subtract),
-        lex::TOKEN_TYPE::STAR => Ok(BinaryOp::Multiply),
-        lex::TOKEN_TYPE::SLASH => Ok(BinaryOp::Divide),
-        lex::TOKEN_TYPE::MODULUS => Ok(BinaryOp::Modulo),
-        lex::TOKEN_TYPE::AMPERSAND => Ok(BinaryOp::BitwiseAnd),
-        lex::TOKEN_TYPE::PIPE => Ok(BinaryOp::BitwiseOr),
-        lex::TOKEN_TYPE::CARET => Ok(BinaryOp::BitwiseXor),
-        lex::TOKEN_TYPE::LEFT_SHIFT => Ok(BinaryOp::LeftShift),
-        lex::TOKEN_TYPE::RIGHT_SHIFT => Ok(BinaryOp::RightShift),
+        lex::TokenType::PLUS => Ok(BinaryOp::Add),
+        lex::TokenType::NegationOp => Ok(BinaryOp::Subtract),
+        lex::TokenType::STAR => Ok(BinaryOp::Multiply),
+        lex::TokenType::SLASH => Ok(BinaryOp::Divide),
+        lex::TokenType::MODULUS => Ok(BinaryOp::Modulo),
+        lex::TokenType::AMPERSAND => Ok(BinaryOp::BitwiseAnd),
+        lex::TokenType::PIPE => Ok(BinaryOp::BitwiseOr),
+        lex::TokenType::CARET => Ok(BinaryOp::BitwiseXor),
+        lex::TokenType::LeftShift => Ok(BinaryOp::LeftShift),
+        lex::TokenType::RightShift => Ok(BinaryOp::RightShift),
+        lex::TokenType::Equal => Ok(BinaryOp::Equal),
+        lex::TokenType::NotEqual => Ok(BinaryOp::NotEqual),
+        lex::TokenType::GreaterThan => Ok(BinaryOp::GreaterThan),
+        lex::TokenType::LessThan => Ok(BinaryOp::LessThan),
+        lex::TokenType::GreaterThanOrEqual => Ok(BinaryOp::GreaterThanOrEqual),
+        lex::TokenType::LessThanOrEqual => Ok(BinaryOp::LessThanOrEqual),
+        lex::TokenType::LogicalAnd => Ok(BinaryOp::LogicalAnd),
+        lex::TokenType::LogicalOr => Ok(BinaryOp::LogicalOr),
+        lex::TokenType::Assignment => Ok(BinaryOp::Assignment),
         _ => Err(format!("Unexpected token: {:?}", token)),
     }
 }
@@ -240,11 +269,11 @@ fn parse_statement(tokens: &mut Vec<lex::Token>) -> Result<Statement, String> {
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected semicolon".to_string());
     }
-    expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::SEMICOLON)?;
+    expect_token_type(&tokens.remove(0), lex::TokenType::SEMICOLON)?;
     Ok(Statement::Return(exp))
 }
 
-fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<Function_declaration, String> {
+fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDeclaration, String> {
     if tokens.is_empty() {
         return Err("Unexpected end of file while parsing function declaration".to_string());
     }
@@ -257,7 +286,7 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<Function_d
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected opening parenthesis".to_string());
     }
-    expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::OPEN_PAREN)?;
+    expect_token_type(&tokens.remove(0), lex::TokenType::OpenParen)?;
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected 'void' or closing parenthesis".to_string());
     }
@@ -265,20 +294,20 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<Function_d
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected closing parenthesis".to_string());
     }
-    expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::CLOSE_PAREN)?;
+    expect_token_type(&tokens.remove(0), lex::TokenType::CloseParen)?;
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected opening brace".to_string());
     }
-    expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::OPEN_BRACE)?;
+    expect_token_type(&tokens.remove(0), lex::TokenType::OpenBrace)?;
     let statement = parse_statement(tokens)?;
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected closing brace".to_string());
     }
-    expect_token_type(&tokens.remove(0), lex::TOKEN_TYPE::CLOSE_BRACE)?;
+    expect_token_type(&tokens.remove(0), lex::TokenType::CloseBrace)?;
     if !tokens.is_empty() {
         return Err(format!("Unexpected token: {:?}", tokens[0]));
     }
-    Ok(Function_declaration::Function(name_token.value, statement))
+    Ok(FunctionDeclaration::Function(name_token.value, statement))
 }
 
 pub fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
@@ -289,30 +318,3 @@ pub fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
     Ok(Program::Program(func_decl))
 }
 
-// fn main() {
-//     let text = "int main( {
-//         return 0;
-//     }";
-//     let mut lexer = lex::Lex::new(text);
-//     let mut tokens = lexer.get_tokens();
-
-
-//     //remove comments
-//     let mut filtered_tokens: Vec<_> = tokens
-//         .into_iter()
-//         .filter(|token| token.token_type != lex::TOKEN_TYPE::COMMENT)
-//         .collect();
-    
-//     // println!("Tokens: {:?}", filtered_tokens);
-
-//     match parse_program(&mut filtered_tokens) {
-//         Ok(program) => {
-//             println!("Parsed successfully. Pretty print:");
-//             program.pretty_print(0);
-//         }
-//         Err(e) => {
-//             eprintln!("Parsing error: {}", e);
-//             std::process::exit(1);
-//         }
-//     }
-// }

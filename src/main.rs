@@ -22,6 +22,7 @@ fn main() {
 
     // Get the input file path
     let input_file = Path::new(&args[1]);
+    println!("Input file: {}", input_file.display());
 
     // Read the input file
     let input = match fs::read_to_string(input_file) {
@@ -39,16 +40,19 @@ fn main() {
     let mut tokens = lexer.get_tokens();
 
     //Remove comments from tokens
-    tokens.retain(|token| token.token_type != lex::TOKEN_TYPE::COMMENT && token.token_type != lex::TOKEN_TYPE::LONG_COMMENT);
+    tokens.retain(|token| token.token_type != lex::TokenType::COMMENT
+         && token.token_type != lex::TokenType::LongComment
+         && token.token_type != lex::TokenType::Tag
+    );
 
     // Parse the program
     match parser::parse_program(&mut tokens) {
         Ok(program) => {
             println!("Parsing successful");
             let tac = tac::generate_tac(program);
-            let mut assembly = assembly::generate_assembly_AST(tac);
+            let mut assembly = assembly::generate_assembly_ast(tac);
             println!("{:?}", assembly);
-            assembly.applyFixes();
+            assembly.apply_fixes();
             println!("{:?}", assembly);
             let assembly_code = assembly.to_assembly_file();
             println!("{}", assembly_code);
@@ -103,4 +107,5 @@ fn main() {
             process::exit(1);
         }
 }
+
 }

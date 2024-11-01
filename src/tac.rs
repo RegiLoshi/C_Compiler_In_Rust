@@ -1,9 +1,10 @@
-use crate::parser::{Program as ParserProgram, Function_declaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
+use crate::parser::{Program as ParserProgram, FunctionDeclaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
 
 #[derive(Clone, Debug)]
 pub enum UnaryOperator {
     Negate,
     Complement,
+    LogicalNot
 }
 
 #[derive(Clone, Debug)]
@@ -18,6 +19,15 @@ pub enum BinaryOperator {
     Caret,
     ShiftLeft,
     ShiftRight,
+    LogicalAnd,
+    LogicalOr,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+    Assign,
 }
 
 impl From<&UnaryOp> for UnaryOperator {
@@ -25,6 +35,7 @@ impl From<&UnaryOp> for UnaryOperator {
         match op {
             UnaryOp::Negation => UnaryOperator::Negate,
             UnaryOp::Complement => UnaryOperator::Complement,
+            UnaryOp::LogicalNot => UnaryOperator::LogicalNot,
         }
     }
 }
@@ -42,6 +53,15 @@ impl From<&BinaryOp> for BinaryOperator {
             BinaryOp::BitwiseXor => BinaryOperator::Caret,
             BinaryOp::LeftShift => BinaryOperator::ShiftLeft,
             BinaryOp::RightShift => BinaryOperator::ShiftRight,
+            BinaryOp::LogicalAnd => BinaryOperator::LogicalAnd,
+            BinaryOp::LogicalOr => BinaryOperator::LogicalOr,
+            BinaryOp::Equal => BinaryOperator::Equal,
+            BinaryOp::NotEqual => BinaryOperator::NotEqual,
+            BinaryOp::GreaterThan => BinaryOperator::GreaterThan,
+            BinaryOp::GreaterThanOrEqual => BinaryOperator::GreaterThanOrEqual,
+            BinaryOp::LessThan => BinaryOperator::LessThan,
+            BinaryOp::LessThanOrEqual => BinaryOperator::LessThanOrEqual,
+            BinaryOp::Assignment => BinaryOperator::Assign,
         }
     }
 }
@@ -52,11 +72,26 @@ pub enum Val {
     Constant(i32),
 }
 
+impl std::fmt::Display for Val {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Val::Constant(n) => write!(f, "{}", n),
+            Val::Identifier(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+
 #[derive(Clone, Debug)]
 pub enum Instruction {
     Return(Val),
     Unary { operator: UnaryOperator, src: Val, dst: Val },
     Binary { operator: BinaryOperator, src1: Val, src2: Val, dst: Val },
+    Copy { src: Val, dst: Val },
+    Jump { label: Val },
+    JumpIfZero { src: Val, label: Val },
+    JumpIfNotZero { src: Val, label: Val },
+    Label { label: Val },
 }
 
 #[derive(Clone, Debug)]
@@ -95,17 +130,104 @@ impl Exp {
         match self {
             Exp::Factor(factor) => factor.generate_tac(body),
             Exp::Binary(left, op, right) => {
-                let left_val = left.generate_tac(body);
-                let right_val = right.generate_tac(body);
-                let dst = Val::Identifier(format!("tmp.{}", body.len()));
-                let instruction = Instruction::Binary {
-                    operator: BinaryOperator::from(op),
-                    src1: left_val,
-                    src2: right_val,
-                    dst: dst.clone(),
-                };
-                body.push(instruction);
-                dst
+                if op == &BinaryOp::LogicalAnd {
+                    let left_val = left.generate_tac(body);
+                    let dst = Val::Identifier(format!("tmp.{}", body.len()));
+                    let label = Val::Identifier(format!("label.{}", body.len()));
+                    
+                    // Convert left value to boolean (0 or 1)
+                    let bool_dst = Val::Identifier(format!("tmp.{}", body.len() + 1));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: left_val.clone(),
+                        src2: Val::Constant(0),
+                        dst: bool_dst.clone(),
+                    });
+                    
+                    // Copy boolean result to dst
+                    body.push(Instruction::Copy {
+                        src: bool_dst.clone(),
+                        dst: dst.clone(),
+                    });
+    
+                    // Short circuit if false (0)
+                    body.push(Instruction::JumpIfZero {
+                        src: bool_dst,
+                        label: label.clone(),
+                    });
+                    
+                    // Evaluate right side if left was true
+                    let right_val = right.generate_tac(body);
+                    
+                    // Convert right value to boolean and store in dst
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: right_val,
+                        src2: Val::Constant(0),
+                        dst: dst.clone(),
+                    });
+    
+                    // Place the label for short-circuit
+                    body.push(Instruction::Label {
+                        label: label,
+                    });
+    
+                    dst
+                } else if op == &BinaryOp::LogicalOr {
+                    let left_val = left.generate_tac(body);
+                    let dst = Val::Identifier(format!("tmp.{}", body.len()));
+                    let label = Val::Identifier(format!("label.{}", body.len()));
+                    
+                    // Convert left value to boolean (0 or 1)
+                    let bool_dst = Val::Identifier(format!("tmp.{}", body.len() + 1));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: left_val.clone(),
+                        src2: Val::Constant(0),
+                        dst: bool_dst.clone(),
+                    });
+                    
+                    // Copy boolean result to dst
+                    body.push(Instruction::Copy {
+                        src: bool_dst.clone(),
+                        dst: dst.clone(),
+                    });
+    
+                    // Short circuit if true (1)
+                    body.push(Instruction::JumpIfNotZero {
+                        src: bool_dst,
+                        label: label.clone(),
+                    });
+                    
+                    // Evaluate right side if left was false
+                    let right_val = right.generate_tac(body);
+                    
+                    // Convert right value to boolean and store in dst
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: right_val,
+                        src2: Val::Constant(0),
+                        dst: dst.clone(),
+                    });
+    
+                    // Place the label for short-circuit
+                    body.push(Instruction::Label {
+                        label: label,
+                    });
+    
+                    dst
+                } else {
+                    let left_val = left.generate_tac(body);
+                    let right_val = right.generate_tac(body);
+                    let dst = Val::Identifier(format!("tmp.{}", body.len()));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::from(op),
+                        src1: left_val,
+                        src2: right_val,
+                        dst: dst.clone(),
+                    });
+                    dst
+                }
             }
         }
     }
@@ -122,11 +244,11 @@ impl Statement {
     }
 }
 
-impl Function_declaration {
+impl FunctionDeclaration {
     pub fn generate_tac(&self) -> Function {
         let mut body = Vec::new();
         match self {
-            Function_declaration::Function(identifier, statement) => {
+            FunctionDeclaration::Function(identifier, statement) => {
                 statement.generate_tac(&mut body);
                 Function {
                     identifier: identifier.clone(),

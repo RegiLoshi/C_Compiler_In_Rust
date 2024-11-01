@@ -1,6 +1,17 @@
 use crate::tac::{Program as TacProgram, Function as TacFunction, Instruction as TacInstruction, Val, UnaryOperator as TacUnaryOperator, BinaryOperator as TacBinaryOperator};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CodeGen {
+    E,
+    NE,
+    G,
+    GE,
+    L,
+    LE
+}
+
+
 #[derive(Debug, Clone)]
 pub enum Reg {
     AX,
@@ -21,6 +32,7 @@ pub enum Operand {
 pub enum UnaryOperator {
     Neg,
     Not,
+    LogicalNot,
 }
 
 #[derive(Debug, Clone)]
@@ -40,8 +52,13 @@ pub enum Instruction {
     Mov(Operand, Operand),
     Unary(UnaryOperator, Operand),
     Binary(BinaryOperator, Operand, Operand),
+    Cmp(Operand, Operand),
     Idiv(Operand),
     Cdq, //sign extension
+    Jmp(String),
+    JmpCC(CodeGen, String),
+    SetCC(CodeGen, Operand),
+    Label(String),
     AllocateStack(i32),
     Ret,
 }
@@ -62,6 +79,7 @@ impl From<TacUnaryOperator> for UnaryOperator {
         match op {
             TacUnaryOperator::Negate => UnaryOperator::Neg,
             TacUnaryOperator::Complement => UnaryOperator::Not,
+            TacUnaryOperator::LogicalNot => UnaryOperator::LogicalNot,
         }
     }
 }
@@ -77,16 +95,30 @@ impl From<Val> for Operand {
 
 impl TacInstruction {
     fn to_assembly_instructions(&self) -> Vec<Instruction> {
+        println!("Converting TAC instruction to assembly: {:?}", self);
         match self {
-            TacInstruction::Return(val) => vec![
+            TacInstruction::Return(val) => {
+                println!("Generating RETURN for value: {:?}", val);
+                vec![
                 Instruction::Mov(Operand::from(val.clone()), Operand::Register(Reg::AX)),
                 Instruction::Ret,
-            ],
-            TacInstruction::Unary { operator, src, dst } => vec![
-                Instruction::Mov(Operand::from(src.clone()), Operand::from(dst.clone())),
-                Instruction::Unary(UnaryOperator::from(operator.clone()), Operand::from(dst.clone())),
-            ],
+            ] },
+            TacInstruction::Unary { operator, src, dst } => {
+            println!("Generating UNARY op: {:?}, src: {:?}, dst: {:?}", operator, src, dst);
+            match operator{
+                TacUnaryOperator::LogicalNot => vec![
+                    Instruction::Cmp(Operand::Imm(0), Operand::from(src.clone())),
+                    Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                    Instruction::SetCC(CodeGen::E, Operand::from(dst.clone())),
+                ],
+                _ => vec![
+                    Instruction::Mov(Operand::from(src.clone()), Operand::from(dst.clone())),
+                    Instruction::Unary(UnaryOperator::from(operator.clone()), Operand::from(dst.clone())),
+                ]
+            }
+        },
             TacInstruction::Binary { operator, src1, src2, dst } => {
+                println!("Generating BINARY op: {:?}, src1: {:?}, src2: {:?}, dst: {:?}", operator, src1, src2, dst);
                 match operator {
                     // Handling the division operator
                     TacBinaryOperator::Divide => vec![
@@ -102,6 +134,37 @@ impl TacInstruction {
                         Instruction::Cdq,
                         Instruction::Idiv(Operand::from(src2.clone())),
                         Instruction::Mov(Operand::Register(Reg::DX), Operand::from(dst.clone())),
+                    ],
+
+                    TacBinaryOperator::GreaterThan => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::G, Operand::from(dst.clone())),
+                    ],
+                    TacBinaryOperator::GreaterThanOrEqual => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::GE, Operand::from(dst.clone())),
+                    ],
+                    TacBinaryOperator::LessThan => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::L, Operand::from(dst.clone())),
+                    ],
+                    TacBinaryOperator::LessThanOrEqual => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::LE, Operand::from(dst.clone())),
+                    ],
+                    TacBinaryOperator::Equal => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::E, Operand::from(dst.clone())),
+                    ],
+                    TacBinaryOperator::NotEqual => vec![
+                        Instruction::Cmp(Operand::from(src2.clone()), Operand::from(src1.clone())),
+                        Instruction::Mov(Operand::Imm(0), Operand::from(dst.clone())),
+                        Instruction::SetCC(CodeGen::NE, Operand::from(dst.clone())),
                     ],
 
                     // Handling other binary operators
@@ -124,7 +187,39 @@ impl TacInstruction {
                         ),
                     ],
                 }
-            }
+            },
+            TacInstruction::JumpIfZero { src, label } => {
+                println!("Generating JUMP IF ZERO for src: {:?}, target: {:?}", src, label);
+                vec![
+                    Instruction::Cmp(Operand::from(src.clone()), Operand::Imm(0)),
+                    Instruction::JmpCC(CodeGen::E, label.to_string()),
+                ]
+            },
+            TacInstruction::JumpIfNotZero { src, label } => {
+                println!("Generating JUMP IF NOT ZERO for src: {:?}, target: {:?}", src, label);
+                vec![
+                    Instruction::Cmp(Operand::from(src.clone()), Operand::Imm(0)),
+                    Instruction::JmpCC(CodeGen::NE, label.to_string()),
+                ]
+            },
+            TacInstruction::Jump { label } => {
+                println!("Generating JUMP for target: {:?}", label);
+                vec![
+                    Instruction::Jmp(label.to_string()),
+                ]
+            },
+            TacInstruction::Label{label}  => {
+                println!("Generating LABEL for target: {:?}", label);
+                vec![
+                    Instruction::Label(label.to_string()),
+                ]
+            },
+            TacInstruction::Copy { src, dst } => {
+                println!("Generating COPY for src: {:?}, dst: {:?}", src, dst);
+                vec![
+                    Instruction::Mov(Operand::from(src.clone()), Operand::from(dst.clone())),
+                ]
+            },
         }
     }
 }
@@ -163,6 +258,19 @@ impl Operand {
             Operand::Stack(offset) => format!("{}(%rbp)", offset),
         }
     }
+    pub fn to_assembly_file_byte(&self) -> String {
+        match self {
+            Operand::Imm(int) => format!("${}", int),
+            Operand::Register(reg) => match reg {
+                Reg::AX => "%al".to_string(),
+                Reg::R10 => "%r10b".to_string(),
+                Reg::R11 => "%r11b".to_string(),
+                Reg::DX => "%dl".to_string(),
+            },
+            Operand::Pseudo(id) => id.clone(),
+            Operand::Stack(offset) => format!("{}(%rbp)", offset),
+        }
+    }
 }
 
 impl Function {
@@ -191,6 +299,15 @@ impl Function {
                     let new_op = Self::replace_operand(op, &mut pseudo_map, &mut counter);
                     new_instructions.push(Instruction::Idiv(new_op));
                 },
+                Instruction::SetCC(code, dst) => {
+                    let new_dst = Self::replace_operand(dst, &mut pseudo_map, &mut counter);
+                    new_instructions.push(Instruction::SetCC(code.clone(), new_dst));
+                },
+                Instruction::Cmp(src, dst) => {
+                    let new_src = Self::replace_operand(src, &mut pseudo_map, &mut counter);
+                    let new_dst = Self::replace_operand(dst, &mut pseudo_map, &mut counter);
+                    new_instructions.push(Instruction::Cmp(new_src, new_dst));
+                },
                 _ => new_instructions.push(instr.clone()),
             }
         }
@@ -216,7 +333,7 @@ impl Function {
         }
     }
 
-    pub fn fixMov(&mut self, stackSize: i32) {
+    pub fn fix_mov(&mut self, stack_size: i32) {
         let mut new_instructions = Vec::new();
         for instr in self.instructions.iter() {
             match instr {
@@ -273,16 +390,31 @@ impl Function {
                         }
                     }
                 },
+                Instruction::Cmp(src, dst) => {
+                    match (src, dst) {
+                        (Operand::Stack(_), Operand::Stack(_)) => {
+                            new_instructions.push(Instruction::Mov(src.clone(), Operand::Register(Reg::R10)));
+                            new_instructions.push(Instruction::Cmp(Operand::Register(Reg::R10), dst.clone()));
+                        },
+                        (_ , Operand::Imm(_)) => {
+                            new_instructions.push(Instruction::Mov(dst.clone(), Operand::Register(Reg::R11)));
+                            new_instructions.push(Instruction::Cmp(src.clone(), Operand::Register(Reg::R11)));
+                        },
+                        _ => {
+                            new_instructions.push(instr.clone());
+                        }
+                    }
+                },
                 _ => {
                     new_instructions.push(instr.clone());
                 }
             }
         }
         self.instructions = new_instructions;
-        self.instructions.insert(0, Instruction::AllocateStack(stackSize));
+        self.instructions.insert(0, Instruction::AllocateStack(stack_size));
     }
 
-    pub fn to_assembly_file(mut self, result: &mut String) {
+    pub fn to_assembly_file(self, result: &mut String) {
         result.push_str(&format!(".globl _{}\n", self.name));
         result.push_str(&format!("_{}:\n", self.name));
         result.push_str("pushq %rbp\n");
@@ -300,8 +432,15 @@ impl Function {
                         UnaryOperator::Not => {
                             result.push_str(&format!("notl {}\n", dst.to_assembly_file()))
                         }
+                        UnaryOperator::LogicalNot => {
+                            result.push_str(&format!("cmpl $0, {}\n", dst.to_assembly_file()));
+                            result.push_str(&format!("movl $0, %eax\n"));
+                            result.push_str(&format!("sete %al\n"));
+                            result.push_str(&format!("movzbl %al, %eax\n"));
+                            result.push_str(&format!("movl %eax, {}\n", dst.to_assembly_file()));
                     }
                 }
+            }
                 Instruction::AllocateStack(size) => {
                     result.push_str(&format!("subq ${}, %rsp\n", size));
                 }
@@ -372,15 +511,59 @@ impl Function {
                 Instruction::Cdq => {
                     result.push_str("cdq\n");
                 },
+                Instruction::Jmp(label) => {
+                    result.push_str(&format!("jmp L{}\n", label));
+                },
+                Instruction::JmpCC(code, label) => {
+                    result.push_str(&format!("j{} L{}\n", match code {
+                        CodeGen::E => "e",
+                        CodeGen::NE => "ne",
+                        CodeGen::G => "g",
+                        CodeGen::GE => "ge",
+                        CodeGen::L => "l",
+                        CodeGen::LE => "le",
+                    }, label));
+                },
+                Instruction::SetCC(code, dst) => {
+                    // First initialize the destination to 0
+                    result.push_str(&format!("movl $0, {}\n", dst.to_assembly_file()));
+                    // Set the result bit based on the condition
+                    result.push_str(&format!("set{} {}\n", match code {
+                        CodeGen::E => "e",
+                        CodeGen::NE => "ne",
+                        CodeGen::G => "g",
+                        CodeGen::GE => "ge",
+                        CodeGen::L => "l",
+                        CodeGen::LE => "le",
+                    }, dst.to_assembly_file_byte()));
+                    // Zero extend the byte result to 32 bits
+                    match dst {
+                        Operand::Stack(_) => {
+                            result.push_str(&format!("movzbl {}, %eax\n", dst.to_assembly_file_byte()));
+                            result.push_str(&format!("movl %eax, {}\n", dst.to_assembly_file()));
+                        },
+                        _ => {
+                            result.push_str(&format!("movzbl {}, {}\n", 
+                                dst.to_assembly_file_byte(), 
+                                dst.to_assembly_file()));
+                        }
+                    }
+                },
+                Instruction::Label(label) => {
+                    result.push_str(&format!("L{}:\n", label));
+                },
+                Instruction::Cmp(src, dst) => {
+                    result.push_str(&format!("cmpl {}, {}\n", src.to_assembly_file(), dst.to_assembly_file()));
+                },
             }
         }
     }
 }
 
 impl Program {
-    pub fn applyFixes(&mut self) {
+    pub fn apply_fixes(&mut self) {
         let stack_size = self.function.replace_pseudo();
-        self.function.fixMov(stack_size);
+        self.function.fix_mov(stack_size);
     }
 
     pub fn to_assembly_file(&self) -> String {
@@ -390,7 +573,7 @@ impl Program {
     }
 }
 
-pub fn generate_assembly_AST(program: TacProgram) -> Program {
+pub fn generate_assembly_ast(program: TacProgram) -> Program {
     program.to_assembly_program()
 }
 
