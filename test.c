@@ -1,3 +1,3 @@
 int main(void) {
-    return 40 << 4 + 12 >> 1;
+    return !(5 && 0) && (!0 || 0) && -1;
 }

@@ -72,6 +72,16 @@ pub enum Val {
     Constant(i32),
 }
 
+impl std::fmt::Display for Val {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Val::Constant(n) => write!(f, "{}", n),
+            Val::Identifier(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+
 #[derive(Clone, Debug)]
 pub enum Instruction {
     Return(Val),
@@ -120,64 +130,107 @@ impl Exp {
         match self {
             Exp::Factor(factor) => factor.generate_tac(body),
             Exp::Binary(left, op, right) => {
-                if op == &BinaryOp::LogicalAnd{
+                if op == &BinaryOp::LogicalAnd {
                     let left_val = left.generate_tac(body);
                     let dst = Val::Identifier(format!("tmp.{}", body.len()));
                     let label = Val::Identifier(format!("label.{}", body.len()));
-                    let instruction = Instruction::JumpIfZero {
-                        src: left_val.clone(),
-                        label: label.clone(),
-                    };
-                    body.push(instruction);
-                    let right_val = right.generate_tac(body);
-                    let instruction = Instruction::Copy {
-                        src: right_val,
+                    
+                    // Convert left value to boolean (0 or 1)
+                    let bool_dst = Val::Identifier(format!("tmp.{}", body.len() + 1));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: left_val.clone(),
+                        src2: Val::Constant(0),
+                        dst: bool_dst.clone(),
+                    });
+                    
+                    // Copy boolean result to dst
+                    body.push(Instruction::Copy {
+                        src: bool_dst.clone(),
                         dst: dst.clone(),
-                    };
-                    body.push(instruction);
-                    let instruction = Instruction::Label {
+                    });
+    
+                    // Short circuit if false (0)
+                    body.push(Instruction::JumpIfZero {
+                        src: bool_dst,
                         label: label.clone(),
-                    };
-                    body.push(instruction);
+                    });
+                    
+                    // Evaluate right side if left was true
+                    let right_val = right.generate_tac(body);
+                    
+                    // Convert right value to boolean and store in dst
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: right_val,
+                        src2: Val::Constant(0),
+                        dst: dst.clone(),
+                    });
+    
+                    // Place the label for short-circuit
+                    body.push(Instruction::Label {
+                        label: label,
+                    });
+    
                     dst
-                }
-                else if op == &BinaryOp::LogicalOr{
+                } else if op == &BinaryOp::LogicalOr {
                     let left_val = left.generate_tac(body);
                     let dst = Val::Identifier(format!("tmp.{}", body.len()));
                     let label = Val::Identifier(format!("label.{}", body.len()));
-                    let instruction = Instruction::JumpIfNotZero {
-                        src: left_val.clone(),
-                        label: label.clone(),
-                    };
-                    body.push(instruction);
-                    let right_val = right.generate_tac(body);
-                    let instruction = Instruction::Copy {
-                        src: right_val,
+                    
+                    // Convert left value to boolean (0 or 1)
+                    let bool_dst = Val::Identifier(format!("tmp.{}", body.len() + 1));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: left_val.clone(),
+                        src2: Val::Constant(0),
+                        dst: bool_dst.clone(),
+                    });
+                    
+                    // Copy boolean result to dst
+                    body.push(Instruction::Copy {
+                        src: bool_dst.clone(),
                         dst: dst.clone(),
-                    };
-                    body.push(instruction);
-                    let instruction = Instruction::Label {
+                    });
+    
+                    // Short circuit if true (1)
+                    body.push(Instruction::JumpIfNotZero {
+                        src: bool_dst,
                         label: label.clone(),
-                    };
-                    body.push(instruction);
+                    });
+                    
+                    // Evaluate right side if left was false
+                    let right_val = right.generate_tac(body);
+                    
+                    // Convert right value to boolean and store in dst
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::NotEqual,
+                        src1: right_val,
+                        src2: Val::Constant(0),
+                        dst: dst.clone(),
+                    });
+    
+                    // Place the label for short-circuit
+                    body.push(Instruction::Label {
+                        label: label,
+                    });
+    
+                    dst
+                } else {
+                    let left_val = left.generate_tac(body);
+                    let right_val = right.generate_tac(body);
+                    let dst = Val::Identifier(format!("tmp.{}", body.len()));
+                    body.push(Instruction::Binary {
+                        operator: BinaryOperator::from(op),
+                        src1: left_val,
+                        src2: right_val,
+                        dst: dst.clone(),
+                    });
                     dst
                 }
-                else {  
-                let left_val = left.generate_tac(body);
-                let right_val = right.generate_tac(body);
-                let dst = Val::Identifier(format!("tmp.{}", body.len()));
-                let instruction = Instruction::Binary {
-                    operator: BinaryOperator::from(op),
-                    src1: left_val,
-                    src2: right_val,
-                    dst: dst.clone(),
-                };
-                body.push(instruction);
-                dst
             }
         }
     }
-}
 }
 
 impl Statement {
