@@ -79,11 +79,29 @@ impl<'a> Lex<'a> {
 
     fn identifier(&mut self) -> Token {
         let mut result = String::new();
-        while self.pos < self.text.len() && self.text.chars().nth(self.pos).unwrap().is_alphanumeric() {
-            result.push(self.text.chars().nth(self.pos).unwrap());
-            self.advance();
+        
+        let first_char = self.text.chars().nth(self.pos).unwrap();
+        if !first_char.is_alphabetic() && first_char != '_' {
+            panic!("Invalid identifier at position {}: '{}'", self.pos, self.text)
         }
-        Token { token_type: TokenType::IDENTIFIER, value: result }
+        
+        result.push(first_char);
+        self.advance();
+    
+        while self.pos < self.text.len() {
+            let current_char = self.text.chars().nth(self.pos).unwrap();
+            if current_char.is_alphanumeric() || current_char == '_' {
+                result.push(current_char);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    
+        Token { 
+            token_type: TokenType::IDENTIFIER, 
+            value: result 
+        }
     }
 
     fn next(&mut self) -> Result<Option<Token>, String> {
