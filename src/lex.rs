@@ -1,5 +1,5 @@
-use std::process;
-#[derive(Debug, PartialEq)]
+use std::{collections::HashSet, process};
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     IDENTIFIER, 
     CONSTANT,
@@ -36,7 +36,7 @@ pub enum TokenType {
     Tag,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub value: String,
@@ -77,32 +77,43 @@ impl<'a> Lex<'a> {
         Token { token_type: TokenType::CONSTANT, value: result }
     }
 
-    fn identifier(&mut self) -> Token {
-        let mut result = String::new();
-        
-        let first_char = self.text.chars().nth(self.pos).unwrap();
-        if !first_char.is_alphabetic() && first_char != '_' {
-            panic!("Invalid identifier at position {}: '{}'", self.pos, self.text)
+
+fn identifier(&mut self) -> Token {
+    let mut result = String::new();
+
+    let first_char = self.text.chars().nth(self.pos).unwrap();
+    if !first_char.is_alphabetic() && first_char != '_' {
+        panic!("Invalid identifier at position {}: '{}'", self.pos, self.text);
+    }
+
+    result.push(first_char);
+    self.advance();
+
+    while self.pos < self.text.len() {
+        let current_char = self.text.chars().nth(self.pos).unwrap();
+        if current_char.is_alphanumeric() || current_char == '_' {
+            result.push(current_char);
+            self.advance();
+        } else {
+            break;
         }
-        
-        result.push(first_char);
-        self.advance();
-    
-        while self.pos < self.text.len() {
-            let current_char = self.text.chars().nth(self.pos).unwrap();
-            if current_char.is_alphanumeric() || current_char == '_' {
-                result.push(current_char);
-                self.advance();
-            } else {
-                break;
-            }
+    }
+
+    let keywords: HashSet<&str> = ["if", "else", "while", "for", "return", "int"].iter().cloned().collect();
+
+    if keywords.contains(result.as_str()) {
+        Token { 
+            token_type: TokenType::KEYWORD, 
+            value: result 
         }
-    
+    } else {
         Token { 
             token_type: TokenType::IDENTIFIER, 
             value: result 
         }
     }
+}
+
 
     fn next(&mut self) -> Result<Option<Token>, String> {
         self.skip_whitespace();

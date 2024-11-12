@@ -1,4 +1,4 @@
-use crate::lex;
+use crate::lex::{self, TokenType};
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
@@ -41,18 +41,33 @@ pub enum Factor {
 
 #[derive(Debug)]
 pub enum Exp {
-    Factor(Factor),
-    Binary(Box<Exp>, BinaryOp, Box<Exp>),
+    Var(String), // Variable name (identifier
+    Factor(Factor), // Constant or parenthesized expression
+    Binary(Box<Exp>, BinaryOp, Box<Exp>), // Binary operation
+    Assignment(Box<Exp>, Box<Exp>) // Assignment
 }
 
 #[derive(Debug)]
 pub enum Statement {
     Return(Exp),
+    Expression(Exp),
+    Null,
+}
+
+#[derive(Debug)]
+pub enum Declaration {
+    Declaration(String, Option<Exp>),
+}
+
+#[derive(Debug)]
+pub enum BlockItem {
+    D(Declaration),
+    S(Statement),
 }
 
 #[derive(Debug)]
 pub enum FunctionDeclaration {
-    Function(String, Statement),
+    Function(String, Vec<Box<BlockItem>>),
 }
 
 #[derive(Debug)]
@@ -95,6 +110,14 @@ impl PrettyPrint for Exp {
                 println!("{}Binary Operation: {:?}", " ".repeat(indent), op);
                 left.pretty_print(indent + 2);
                 right.pretty_print(indent + 2);
+            },
+            Exp::Var(name) => {
+                println!("{}Variable: {}", " ".repeat(indent), name);
+            },
+            Exp::Assignment(left, right) => {
+                println!("{}Assignment:", " ".repeat(indent));
+                left.pretty_print(indent + 2);
+                right.pretty_print(indent + 2);
             }
         }
     }
@@ -106,6 +129,39 @@ impl PrettyPrint for Statement {
             Statement::Return(exp) => {
                 println!("{}Return:", " ".repeat(indent));
                 exp.pretty_print(indent + 2);
+            },
+            Statement::Expression(exp) => {
+                println!("{}Expression:", " ".repeat(indent));
+                exp.pretty_print(indent + 2);
+            },
+            Statement::Null => {
+                println!("{}Null", " ".repeat(indent));
+            }
+        }
+    }
+}
+
+impl PrettyPrint for Declaration {
+    fn pretty_print(&self, indent: usize) {
+        match self {
+            Declaration::Declaration(name, exp) => {
+                println!("{}Declaration: {}", " ".repeat(indent), name);
+                if let Some(exp) = exp {
+                    exp.pretty_print(indent + 2);
+                }
+            }
+        }
+    }
+}
+
+impl PrettyPrint for BlockItem {
+    fn pretty_print(&self, indent: usize) {
+        match self {
+            BlockItem::D(declaration) => {
+                declaration.pretty_print(indent);
+            }
+            BlockItem::S(statement) => {
+                statement.pretty_print(indent);
             }
         }
     }
@@ -114,9 +170,11 @@ impl PrettyPrint for Statement {
 impl PrettyPrint for FunctionDeclaration {
     fn pretty_print(&self, indent: usize) {
         match self {
-            FunctionDeclaration::Function(name, statement) => {
+            FunctionDeclaration::Function(name, block_items) => {
                 println!("{}Function: {}", " ".repeat(indent), name);
-                statement.pretty_print(indent + 2);
+                for item in block_items {
+                    item.pretty_print(indent + 2);
+                }
             }
         }
     }
@@ -136,6 +194,27 @@ impl PrettyPrint for Program {
 fn expect_int_keyword(token: &lex::Token) -> Result<(), String> {
     if token.value != "int" {
         return Err(format!("Expected int keyword, got '{}'", token.value));
+    }
+    Ok(())
+}
+
+// fn expect_return_keyword(token: &lex::Token) -> Result<(), String> {
+//     if token.value != "return" {
+//         return Err(format!("Expected return keyword, got '{}'", token.value));
+//     }
+//     Ok(())
+// }
+
+fn expect_main_keyword(token: &lex::Token) -> Result<(), String> {
+    if token.value != "main" {
+        return Err(format!("Expected main keyword, got '{}'", token.value));
+    }
+    Ok(())
+}
+
+fn expect_void_keyword(token: &lex::Token) -> Result<(), String> {
+    if token.value != "void" {
+        return Err(format!("Expected void keyword, got '{}'", token.value));
     }
     Ok(())
 }
@@ -163,22 +242,40 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
     if tokens.is_empty() {
         return Err("Unexpected end of file while parsing factor".to_string());
     }
-    let token = tokens.remove(0);
+
+    // Clone the token value we need, so we don't keep a reference to tokens
+    let token = tokens[0].clone();
+    
     match token.token_type {
-        lex::TokenType::CONSTANT => Ok(Factor::Int(token.value.parse().unwrap())),
+        // Case 1: Integer constant
+        lex::TokenType::CONSTANT => {
+            tokens.remove(0);
+            Ok(Factor::Int(token.value.parse().unwrap()))
+        },
+        // Case 2: Identifier
+        lex::TokenType::IDENTIFIER => {
+            tokens.remove(0);
+            Ok(Factor::Exp(Box::new(Exp::Var(token.value))))
+        },
+        // Case 3: Unary operators
         lex::TokenType::NegationOp => {
+            tokens.remove(0);
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Negation, Box::new(factor)))
         },
         lex::TokenType::TildeOp => {
+            tokens.remove(0);
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::Complement, Box::new(factor)))
         },
         lex::TokenType::LogicalNot => {
+            tokens.remove(0);
             let factor = parse_factor(tokens)?;
             Ok(Factor::Unary(UnaryOp::LogicalNot, Box::new(factor)))
         },
+        // Case 4: Parenthesized expression
         lex::TokenType::OpenParen => {
+            tokens.remove(0);
             let exp = parse_expression(tokens, 0)?;
             if tokens.is_empty() {
                 return Err("Unexpected end of file; expected closing parenthesis".to_string());
@@ -186,7 +283,7 @@ fn parse_factor(tokens: &mut Vec<lex::Token>) -> Result<Factor, String> {
             expect_token_type(&tokens.remove(0), lex::TokenType::CloseParen)?;
             Ok(Factor::Exp(Box::new(exp)))
         },
-        _ => Err("Unexpected token while parsing factor".to_string()),
+        _ => Err(format!("Unexpected token while parsing factor: {:?}", token)),
     }
 }
 
@@ -253,24 +350,114 @@ fn parse_expression(tokens: &mut Vec<lex::Token>, min_precedence: u8) -> Result<
             break;
         }
 
+        if tokens[0].token_type == lex::TokenType::Assignment {
+            tokens.remove(0);
+            let right = parse_expression(tokens, precedence)?;
+            left = Exp::Assignment(Box::new(left), Box::new(right));
+            continue;
+        } else{
         tokens.remove(0);
         let right = parse_expression(tokens, precedence + 1)?;
         left = Exp::Binary(Box::new(left), op, Box::new(right));
+        }
     }
     Ok(left)
 }
 
+fn parse_declaration(tokens: &mut Vec<lex::Token>) -> Result<Declaration, String> {
+    // Check if we have any tokens left
+    if tokens.is_empty() {
+        return Err("Unexpected end of file while parsing declaration".to_string());
+    }
+
+    // Parse "int"
+    let int_token = tokens.remove(0);
+    expect_int_keyword(&int_token)?;
+
+    // Parse identifier
+    if tokens.is_empty() {
+        return Err("Unexpected end of file; expected identifier".to_string());
+    }
+    let name_token = tokens.remove(0);
+    expect_identifier(&name_token, None)?;
+
+    // Check for optional assignment
+    if tokens.is_empty() {
+        return Err("Unexpected end of file; expected ';' or '='".to_string());
+    }
+
+    let next_token = &tokens[0];
+    let exp = if next_token.token_type == lex::TokenType::Assignment {
+        // Remove the '=' token
+        tokens.remove(0);
+        
+        // Parse the expression
+        if tokens.is_empty() {
+            return Err("Unexpected end of file; expected expression after '='".to_string());
+        }
+        Some(parse_expression(tokens, 0)?)
+    } else {
+        None
+    };
+
+    // Parse semicolon
+    if tokens.is_empty() {
+        return Err("Unexpected end of file; expected ';'".to_string());
+    }
+    let semicolon_token = tokens.remove(0);
+    expect_token_type(&semicolon_token, lex::TokenType::SEMICOLON)?;
+
+    Ok(Declaration::Declaration(name_token.value, exp))
+}
+
 fn parse_statement(tokens: &mut Vec<lex::Token>) -> Result<Statement, String> {
+    // Check if we have any tokens
     if tokens.is_empty() {
         return Err("Unexpected end of file while parsing statement".to_string());
     }
-    expect_identifier(&tokens.remove(0), Some("return"))?;
-    let exp = parse_expression(tokens, 0)?;
-    if tokens.is_empty() {
-        return Err("Unexpected end of file; expected semicolon".to_string());
+
+    // Get first token without removing it
+    let token = &tokens[0];
+
+    match token.token_type {
+        // Case 3: Just a semicolon
+        lex::TokenType::SEMICOLON => {
+            tokens.remove(0); // Remove semicolon
+            Ok(Statement::Null)
+        },
+        // Case 1: Return statement
+        lex::TokenType::KEYWORD if token.value == "return" => {
+            tokens.remove(0); // Remove 'return'
+            if tokens.is_empty() {
+                return Err("Unexpected end of file after 'return'".to_string());
+            }
+            let exp = parse_expression(tokens, 0)?;
+            if tokens.is_empty() {
+                return Err("Unexpected end of file; expected semicolon".to_string());
+            }
+            expect_token_type(&tokens.remove(0), lex::TokenType::SEMICOLON)?;
+            Ok(Statement::Return(exp))
+        },
+        // Case 2: Expression statement
+        _ => {
+            let exp = parse_expression(tokens, 0)?;
+            if tokens.is_empty() {
+                return Err("Unexpected end of file; expected semicolon".to_string());
+            }
+            expect_token_type(&tokens.remove(0), lex::TokenType::SEMICOLON)?;
+            Ok(Statement::Expression(exp))
+        }
     }
-    expect_token_type(&tokens.remove(0), lex::TokenType::SEMICOLON)?;
-    Ok(Statement::Return(exp))
+}
+
+fn parse_block_items(tokens: &mut Vec<lex::Token>) -> Result<Box<BlockItem>, String> {
+    if expect_int_keyword(&tokens[0]).is_ok(){
+        let declaration = parse_declaration(tokens)?;
+        Ok(Box::new(BlockItem::D(declaration)))
+    } else {
+        let statement = parse_statement(tokens)?;
+        Ok(Box::new(BlockItem::S(statement)))
+    }
 }
 
 fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDeclaration, String> {
@@ -282,7 +469,8 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDe
         return Err("Unexpected end of file; expected function name".to_string());
     }
     let name_token = tokens.remove(0);
-    expect_identifier(&name_token, Some("main"))?;
+    //expect_identifier(&name_token, Some("main"))?;
+    expect_main_keyword(&name_token)?;
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected opening parenthesis".to_string());
     }
@@ -290,7 +478,8 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDe
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected 'void' or closing parenthesis".to_string());
     }
-    expect_identifier(&tokens.remove(0), Some("void"))?;
+    // expect_identifier(&tokens.remove(0), Some("void"))?;
+    expect_void_keyword(&tokens.remove(0))?;
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected closing parenthesis".to_string());
     }
@@ -299,7 +488,10 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDe
         return Err("Unexpected end of file; expected opening brace".to_string());
     }
     expect_token_type(&tokens.remove(0), lex::TokenType::OpenBrace)?;
-    let statement = parse_statement(tokens)?;
+    let mut block_items = Vec::new();
+    while tokens[0].token_type != lex::TokenType::CloseBrace {
+        block_items.push(parse_block_items(tokens)?);
+    }
     if tokens.is_empty() {
         return Err("Unexpected end of file; expected closing brace".to_string());
     }
@@ -307,7 +499,7 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDe
     if !tokens.is_empty() {
         return Err(format!("Unexpected token: {:?}", tokens[0]));
     }
-    Ok(FunctionDeclaration::Function(name_token.value, statement))
+    Ok(FunctionDeclaration::Function(name_token.value, block_items))
 }
 
 pub fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
