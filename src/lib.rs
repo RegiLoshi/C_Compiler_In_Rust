@@ -4,5 +4,5 @@ pub mod assembly;
 pub mod tac;
 
 pub use crate::lex::Lex;
-pub use crate::parser::parse_program;
+pub use crate::parser::parse_and_resolve_program;
 

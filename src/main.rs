@@ -47,7 +47,7 @@ fn main() {
     eprint!("Tokens: {:?}", tokens);
 
     // Parse the program
-    match parser::parse_program(&mut tokens) {
+    match parser::parse_and_resolve_program(&mut tokens) {
         Ok(program) => {
         println!("Parsing successful");
 //             let tac = tac::generate_tac(program);
