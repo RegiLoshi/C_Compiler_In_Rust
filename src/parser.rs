@@ -1,6 +1,7 @@
-use crate::lex::{self, TokenType};
+use crate::lex::{self};
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Negation, // -
     Complement, // ~
@@ -32,14 +33,14 @@ pub enum BinaryOp {
     Assignment,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Factor {
     Int(i32),
     Unary(UnaryOp, Box<Factor>),
     Exp(Box<Exp>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Exp {
     Var(String), // Variable name (identifier
     Factor(Factor), // Constant or parenthesized expression
@@ -197,13 +198,6 @@ fn expect_int_keyword(token: &lex::Token) -> Result<(), String> {
     }
     Ok(())
 }
-
-// fn expect_return_keyword(token: &lex::Token) -> Result<(), String> {
-//     if token.value != "return" {
-//         return Err(format!("Expected return keyword, got '{}'", token.value));
-//     }
-//     Ok(())
-// }
 
 fn expect_main_keyword(token: &lex::Token) -> Result<(), String> {
     if token.value != "main" {
@@ -502,11 +496,160 @@ fn parse_function_declaration(tokens: &mut Vec<lex::Token>) -> Result<FunctionDe
     Ok(FunctionDeclaration::Function(name_token.value, block_items))
 }
 
-pub fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
+fn parse_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
     if tokens.is_empty() {
         return Err("Empty program".to_string());
     }
     let func_decl = parse_function_declaration(tokens)?;
     Ok(Program::Program(func_decl))
 }
+// Helper function to generate unique variable names
+fn make_temporary(name: String, symbol_table: &HashMap<String, String>) -> String {
+    let mut counter = 0;
+    let mut temp_name = name.clone();
+    while symbol_table.contains_key(&temp_name) {
+        counter += 1;
+        temp_name = format!("{}.{}", name, counter);
+    }
+    temp_name
+}
 
+// Expression resolution with improved error handling
+fn resolve_expression(exp: Exp, symbol_table: &HashMap<String, String>) -> Result<Exp, String> {
+    match exp {
+        Exp::Assignment(left, right) => {
+            let resolved_left = resolve_expression(*left, symbol_table)?;
+            let resolved_right = resolve_expression(*right, symbol_table)?;
+            
+            // Extract the variable name from the resolved left expression
+            let var_name = match &resolved_left {
+                Exp::Var(_) => Ok(resolved_left),
+                Exp::Factor(Factor::Exp(box_exp)) => {
+                    match **box_exp {
+                        Exp::Var(_) => Ok(resolved_left),
+                        _ => Err("Left side of assignment must resolve to a variable".to_string())
+                    }
+                }
+                _ => Err("Left side of assignment must resolve to a variable".to_string())
+            }?;
+
+            Ok(Exp::Assignment(Box::new(var_name), Box::new(resolved_right)))
+        },
+        Exp::Var(name) => {
+            if !symbol_table.contains_key(&name) {
+                return Err(format!("Variable '{}' not declared", name));
+            }
+            Ok(Exp::Var(symbol_table[&name].clone()))
+        },
+        Exp::Binary(left, op, right) => {
+            let resolved_left = resolve_expression(*left, symbol_table)?;
+            let resolved_right = resolve_expression(*right, symbol_table)?;
+            Ok(Exp::Binary(Box::new(resolved_left), op, Box::new(resolved_right)))
+        },
+        Exp::Factor(factor) => {
+            match factor {
+                Factor::Int(value) => Ok(Exp::Factor(Factor::Int(value))),
+                Factor::Unary(op, factor) => {
+                    let resolved = resolve_expression(Exp::Factor(*factor), symbol_table)?;
+                    match resolved {
+                        Exp::Factor(f) => Ok(Exp::Factor(Factor::Unary(op, Box::new(f)))),
+                        _ => Err("Expected a Factor after resolving unary expression".to_string())
+                    }
+                },
+                Factor::Exp(exp) => {
+                    let resolved = resolve_expression(*exp, symbol_table)?;
+                    Ok(Exp::Factor(Factor::Exp(Box::new(resolved))))
+                }
+            }
+        }
+    }
+}
+
+
+// Declaration resolution with improved error handling
+fn resolve_declaration(
+    name: String, 
+    init: Option<Exp>, 
+    symbol_table: &mut HashMap<String, String>
+) -> Result<Declaration, String> {
+    // Check for redeclaration
+    if symbol_table.contains_key(&name) {
+        return Err(format!("Variable '{}' already declared", name));
+    }
+
+    // Generate unique identifier
+    let unique_id = make_temporary(name.clone(), symbol_table);
+    
+    // Add to symbol table before resolving initialization
+    symbol_table.insert(name, unique_id.clone());
+    
+    // Resolve initialization if present
+    let resolved_init = match init {
+        Some(init_exp) => Some(resolve_expression(init_exp, symbol_table)?),
+        None => None
+    };
+
+    Ok(Declaration::Declaration(unique_id, resolved_init))
+}
+
+// Statement resolution with improved error handling
+fn resolve_statement(statement: Statement, symbol_table: &HashMap<String, String>) -> Result<Statement, String> {
+    match statement {
+        Statement::Return(exp) => {
+            let resolved_exp = resolve_expression(exp, symbol_table)?;
+            Ok(Statement::Return(resolved_exp))
+        },
+        Statement::Expression(exp) => {
+            let resolved_exp = resolve_expression(exp, symbol_table)?;
+            Ok(Statement::Expression(resolved_exp))
+        },
+        Statement::Null => Ok(Statement::Null)
+    }
+}
+
+// Block item resolution with proper error propagation
+fn resolve_block_item(item: BlockItem, symbol_table: &mut HashMap<String, String>) -> Result<BlockItem, String> {
+    match item {
+        BlockItem::D(Declaration::Declaration(name, init)) => {
+            let resolved = resolve_declaration(name, init, symbol_table)?;
+            Ok(BlockItem::D(resolved))
+        },
+        BlockItem::S(statement) => {
+            let resolved = resolve_statement(statement, symbol_table)?;
+            Ok(BlockItem::S(resolved))
+        }
+    }
+}
+
+// Function declaration resolution with proper scope handling
+fn resolve_function_declaration(func_decl: FunctionDeclaration) -> Result<FunctionDeclaration, String> {
+    match func_decl {
+        FunctionDeclaration::Function(name, block_items) => {
+            let mut symbol_table = HashMap::new();
+            let mut resolved_items = Vec::new();
+
+            for item in block_items.into_iter() {
+                let resolved_item = resolve_block_item(*item, &mut symbol_table)?;
+                resolved_items.push(Box::new(resolved_item));
+            }
+
+            Ok(FunctionDeclaration::Function(name, resolved_items))
+        }
+    }
+}
+
+// Program resolution with proper error propagation
+pub fn resolve_program(program: Program) -> Result<Program, String> {
+    match program {
+        Program::Program(func_decl) => {
+            let resolved_func = resolve_function_declaration(func_decl)?;
+            Ok(Program::Program(resolved_func))
+        }
+    }
+}
+
+// Main entry point for parsing and resolving
+pub fn parse_and_resolve_program(tokens: &mut Vec<lex::Token>) -> Result<Program, String> {
+    let parsed_program = parse_program(tokens)?;
+    resolve_program(parsed_program)
+}
