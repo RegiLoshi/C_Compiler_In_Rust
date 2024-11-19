@@ -33,14 +33,14 @@ pub enum BinaryOp {
     Assignment,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Factor {
     Int(i32),
     Unary(UnaryOp, Box<Factor>),
     Exp(Box<Exp>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Exp {
     Var(String), // Variable name (identifier
     Factor(Factor), // Constant or parenthesized expression
@@ -48,30 +48,30 @@ pub enum Exp {
     Assignment(Box<Exp>, Box<Exp>) // Assignment
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Return(Exp),
     Expression(Exp),
     Null,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Declaration {
     Declaration(String, Option<Exp>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlockItem {
     D(Declaration),
     S(Statement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FunctionDeclaration {
     Function(String, Vec<Box<BlockItem>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Program {
     Program(FunctionDeclaration),
 }
