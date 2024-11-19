@@ -1,4 +1,4 @@
-use crate::parser::{Program as ParserProgram, FunctionDeclaration, Statement, Exp, UnaryOp, Factor, BinaryOp};
+use crate::parser::{Program as ParserProgram, FunctionDeclaration, Statement, Exp, UnaryOp, Factor, BinaryOp, BlockItem, Declaration};
 
 #[derive(Clone, Debug)]
 pub enum UnaryOperator {
@@ -228,48 +228,116 @@ impl Exp {
                     });
                     dst
                 }
+            },
+            Exp::Var(identifier) => Val::Identifier(identifier.clone()),
+            Exp::Assignment(left, right) => {
+                // Generate TAC for the right-hand side (rhs)
+                let rhs_val = right.generate_tac(body);
+
+                // Generate a copy instruction for the assignment
+                let left_val = left.generate_tac(body);
+
+                // Use a reference to left_val to avoid moving it
+                body.push(Instruction::Copy {
+                    src: rhs_val,
+                    dst: left_val.clone(), // clone here if necessary
+                });
+
+                left_val // Return the left-hand side variable
             }
         }
-    }
-}
-
-impl Statement {
-    fn generate_tac(&self, body: &mut Vec<Instruction>) {
-        match self {
-            Statement::Return(exp) => {
-                let val = exp.generate_tac(body);
-                body.push(Instruction::Return(val));
-            }
         }
     }
-}
-
-impl FunctionDeclaration {
-    pub fn generate_tac(&self) -> Function {
-        let mut body = Vec::new();
-        match self {
-            FunctionDeclaration::Function(identifier, statement) => {
-                statement.generate_tac(&mut body);
-                Function {
-                    identifier: identifier.clone(),
-                    body,
+    
+    impl Declaration {
+        fn generate_tac(&self, body: &mut Vec<Instruction>) -> Option<Val> {
+            match self {
+                Declaration::Declaration(identifier, initializer) => {
+                    // If there's an initializer, treat it like an assignment
+                    if let Some(init_exp) = initializer {
+                        let val = init_exp.generate_tac(body);
+                        let dst = Val::Identifier(identifier.clone());
+                        body.push(Instruction::Copy {
+                            src: val,
+                            dst: dst.clone(),
+                        });
+                        Some(dst)
+                    } else {
+                        // No initializer, so no TAC generated
+                        None
+                    }
                 }
             }
         }
     }
-}
-
-impl ParserProgram {
-    pub fn generate_tac(&self) -> Program {
-        match self {
-            ParserProgram::Program(func_decl) => {
-                let function = func_decl.generate_tac();
-                Program { function }
+    
+    impl Statement {
+        fn generate_tac(&self, body: &mut Vec<Instruction>) {
+            match self {
+                Statement::Return(exp) => {
+                    let val = exp.generate_tac(body);
+                    body.push(Instruction::Return(val));
+                },
+                Statement::Expression(exp) => {
+                    // Generate TAC for the expression, but discard the result
+                    exp.generate_tac(body);
+                },
+                Statement::Null => {
+                    // Do nothing for null statements
+                },
             }
         }
     }
-}
-
-pub fn generate_tac(program: ParserProgram) -> Program {
-    program.generate_tac()
-}
+    
+    impl BlockItem {
+        fn generate_tac(&self, body: &mut Vec<Instruction>) {
+            match self {
+                BlockItem::S(stmt) => {
+                    stmt.generate_tac(body);
+                },
+                BlockItem::D(decl) => {
+                    // Handle declaration, ignore the result if no initializer
+                    decl.generate_tac(body);
+                }
+            }
+        }
+    }
+    
+    impl FunctionDeclaration {
+        pub fn generate_tac(&self) -> Function {
+            let mut body = Vec::new();
+            match self {
+                FunctionDeclaration::Function(identifier, block_items) => {
+                    // Process each block item in order
+                    for block_item in block_items {
+                        block_item.generate_tac(&mut body);
+                    }
+    
+                    // If the function is main and has no return, add an implicit return 0
+                    if identifier == "main" && !body.iter().any(|instruction| matches!(instruction, Instruction::Return(_))) {
+                        body.push(Instruction::Return(Val::Constant(0)));
+                    }
+    
+                    Function {
+                        identifier: identifier.clone(),
+                        body,
+                    }
+                }
+            }
+        }
+    }
+    
+    impl ParserProgram {
+        pub fn generate_tac(&self) -> Program {
+            match self {
+                ParserProgram::Program(func_decl) => {
+                    let function = func_decl.generate_tac();
+                    Program { function }
+                }
+            }
+        }
+    }
+    
+    pub fn generate_tac(program: ParserProgram) -> Program {
+        program.generate_tac()
+    }

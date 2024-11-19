@@ -44,11 +44,12 @@ fn main() {
          && token.token_type != lex::TokenType::LongComment
          && token.token_type != lex::TokenType::Tag
     );
+    // eprint!("Tokens: {:?}", tokens);
 
     // Parse the program
-    match parser::parse_program(&mut tokens) {
+    match parser::parse_and_resolve_program(&mut tokens) {
         Ok(program) => {
-            println!("Parsing successful");
+        println!("Parsing successful");
             let tac = tac::generate_tac(program);
             let mut assembly = assembly::generate_assembly_ast(tac);
             println!("{:?}", assembly);
@@ -107,5 +108,6 @@ fn main() {
             process::exit(1);
         }
 }
+
 
 }
