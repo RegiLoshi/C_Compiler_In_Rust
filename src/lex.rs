@@ -34,6 +34,8 @@ pub enum TokenType {
     GreaterThanOrEqual,
     LessThanOrEqual,
     Tag,
+    QuestionMark,
+    Colon,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -248,6 +250,8 @@ fn identifier(&mut self) -> Token {
                 }
                 Ok(Some(Token { token_type: TokenType::Tag, value: tag }))
             },
+            '?' => { self.advance(); Ok(Some(Token { token_type: TokenType::QuestionMark, value: "?".to_string() })) },
+            ':' => { self.advance(); Ok(Some(Token { token_type: TokenType::Colon, value: ":".to_string() })) },
             _ => Err(format!("Invalid character '{}' found at position {} in text '{}'", 
                             self.text.chars().nth(self.pos).unwrap(), self.pos, self.text)),
         }
